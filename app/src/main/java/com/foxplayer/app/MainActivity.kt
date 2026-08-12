@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,23 +18,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -66,12 +70,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             FoxMusicTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    PlayerScreen(playerController)
-                }
+                PlayerScreen(playerController)
             }
         }
     }
@@ -85,192 +84,228 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PlayerScreen(controller: PlayerController) {
     val uiState by controller.uiState.collectAsState()
+    var showUrlDialog by remember { mutableStateOf(false) }
     var urlInput by remember { mutableStateOf("") }
 
     // Update position every second while playing
     LaunchedEffect(uiState.isPlaying) {
         while (uiState.isPlaying) {
             controller.updatePosition()
-            delay(1000)
+            delay(500)
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // App title
-        Text(
-            text = "Fox Music",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Album art placeholder
-        Column(
-            modifier = Modifier
-                .size(220.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surface),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = Icons.Default.MusicNote,
-                contentDescription = null,
-                modifier = Modifier.size(80.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Title & Artist
-        Text(
-            text = uiState.title,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            text = uiState.artist,
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 4.dp)
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Progress bar
-        val progress = if (uiState.duration > 0) {
-            uiState.currentPosition.toFloat() / uiState.duration.toFloat()
-        } else 0f
-
-        Slider(
-            value = progress.coerceIn(0f, 1f),
-            onValueChange = { newProgress ->
-                val newPosition = (newProgress * uiState.duration).toLong()
-                controller.seekTo(newPosition)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary
-            )
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = formatTime(uiState.currentPosition),
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-            Text(
-                text = formatTime(uiState.duration),
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Controls
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            IconButton(onClick = { /* Previous - future */ }) {
-                Icon(
-                    imageVector = Icons.Default.SkipPrevious,
-                    contentDescription = "Anterior",
-                    modifier = Modifier.size(36.dp),
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
-
-            IconButton(
-                onClick = { controller.togglePlayPause() },
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showUrlDialog = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White
             ) {
                 Icon(
-                    imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (uiState.isPlaying) "Pausar" else "Reproducir",
-                    modifier = Modifier.size(40.dp),
-                    tint = Color.White
-                )
-            }
-
-            IconButton(onClick = { /* Next - future */ }) {
-                Icon(
-                    imageVector = Icons.Default.SkipNext,
-                    contentDescription = "Siguiente",
-                    modifier = Modifier.size(36.dp),
-                    tint = MaterialTheme.colorScheme.onBackground
+                    imageVector = Icons.Default.Link,
+                    contentDescription = "Abrir URL"
                 )
             }
         }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(56.dp))
 
-        Spacer(modifier = Modifier.height(40.dp))
+            // Title
+            Text(
+                text = "Fox Music",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
 
-        // Streaming URL input
-        Text(
-            text = "Probar streaming (URL)",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-        )
+            Spacer(modifier = Modifier.height(40.dp))
 
-        Spacer(modifier = Modifier.height(8.dp))
+            // Album art
+            Box(
+                modifier = Modifier
+                    .size(240.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = null,
+                    modifier = Modifier.size(90.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
 
-        OutlinedTextField(
-            value = urlInput,
-            onValueChange = { urlInput = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("https://ejemplo.com/cancion.mp3") },
-            singleLine = true
-        )
+            Spacer(modifier = Modifier.height(36.dp))
 
-        Spacer(modifier = Modifier.height(12.dp))
+            // Song info
+            Text(
+                text = uiState.title,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = uiState.artist.ifBlank { " " },
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
 
-        Button(
-            onClick = {
-                if (urlInput.isNotBlank()) {
-                    controller.playUri(urlInput.trim())
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Progress
+            val progress = if (uiState.duration > 0) {
+                (uiState.currentPosition.toFloat() / uiState.duration.toFloat()).coerceIn(0f, 1f)
+            } else 0f
+
+            Slider(
+                value = progress,
+                onValueChange = { newProgress ->
+                    val newPosition = (newProgress * uiState.duration).toLong()
+                    controller.seekTo(newPosition)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                )
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = formatTime(uiState.currentPosition),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+                Text(
+                    text = formatTime(uiState.duration),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Controls
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(28.dp)
+            ) {
+                IconButton(onClick = { /* Previous */ }) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Anterior",
+                        modifier = Modifier.size(38.dp),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+
+                IconButton(
+                    onClick = { controller.togglePlayPause() },
+                    modifier = Modifier
+                        .size(74.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                ) {
+                    Icon(
+                        imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (uiState.isPlaying) "Pausar" else "Reproducir",
+                        modifier = Modifier.size(42.dp),
+                        tint = Color.White
+                    )
+                }
+
+                IconButton(onClick = { /* Next */ }) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Siguiente",
+                        modifier = Modifier.size(38.dp),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Status
+            Text(
+                text = if (uiState.isConnected) "● Conectado" else "○ Conectando...",
+                fontSize = 12.sp,
+                color = if (uiState.isConnected)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
+    }
+
+    // Dialog for URL
+    if (showUrlDialog) {
+        AlertDialog(
+            onDismissRequest = { showUrlDialog = false },
+            title = {
+                Text(
+                    text = "Reproducir URL",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Pega una URL directa de un archivo de audio (.mp3, .m4a, etc.)",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = urlInput,
+                        onValueChange = { urlInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("https://...") },
+                        singleLine = true
+                    )
                 }
             },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary
-            )
-        ) {
-            Text("Reproducir URL")
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Text(
-            text = if (uiState.isConnected) "Conectado al servicio" else "Conectando...",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.outline
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (urlInput.isNotBlank()) {
+                            controller.playUri(urlInput.trim())
+                            showUrlDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("Reproducir")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUrlDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
         )
     }
 }

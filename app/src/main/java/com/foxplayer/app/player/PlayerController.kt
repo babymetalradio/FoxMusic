@@ -2,6 +2,7 @@ package com.foxplayer.app.player
 
 import android.content.ComponentName
 import android.content.Context
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -43,43 +44,60 @@ class PlayerController(private val context: Context) {
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
-            if (playbackState == Player.STATE_READY || playbackState == Player.STATE_BUFFERING) {
-                updatePosition()
-            }
+            updatePosition()
         }
     }
 
     fun connect() {
-        val sessionToken = SessionToken(
-            context,
-            ComponentName(context, PlaybackService::class.java)
-        )
+        try {
+            val sessionToken = SessionToken(
+                context,
+                ComponentName(context, PlaybackService::class.java)
+            )
 
-        controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
-        controllerFuture?.addListener({
-            controller = controllerFuture?.get()
-            controller?.addListener(playerListener)
-            _uiState.value = _uiState.value.copy(isConnected = true)
+            controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+            controllerFuture?.addListener({
+                try {
+                    controller = controllerFuture?.get()
+                    controller?.addListener(playerListener)
+                    _uiState.value = _uiState.value.copy(isConnected = true)
 
-            // Update initial state
-            controller?.let { c ->
-                val metadata = c.mediaMetadata
-                _uiState.value = _uiState.value.copy(
-                    isPlaying = c.isPlaying,
-                    title = metadata.title?.toString() ?: "Ninguna canción",
-                    artist = metadata.artist?.toString() ?: "",
-                    duration = c.duration.coerceAtLeast(0L),
-                    currentPosition = c.currentPosition
-                )
-            }
-        }, MoreExecutors.directExecutor())
+                    controller?.let { c ->
+                        val metadata = c.mediaMetadata
+                        _uiState.value = _uiState.value.copy(
+                            isPlaying = c.isPlaying,
+                            title = metadata.title?.toString() ?: "Ninguna canción",
+                            artist = metadata.artist?.toString() ?: "",
+                            duration = if (c.duration > 0) c.duration else 0L,
+                            currentPosition = c.currentPosition
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e("PlayerController", "Error connecting controller", e)
+                    _uiState.value = _uiState.value.copy(isConnected = false)
+                }
+            }, MoreExecutors.directExecutor())
+        } catch (e: Exception) {
+            Log.e("PlayerController", "Error creating session token", e)
+        }
     }
 
     fun playUri(uri: String, title: String = "Streaming", artist: String = "Fox Music") {
         val item = PlaybackService.mediaItemFromUri(uri, title, artist)
-        controller?.setMediaItem(item)
-        controller?.prepare()
-        controller?.play()
+
+        val c = controller
+        if (c != null) {
+            c.setMediaItem(item)
+            c.prepare()
+            c.play()
+            _uiState.value = _uiState.value.copy(
+                title = title,
+                artist = artist
+            )
+        } else {
+            Log.e("PlayerController", "Controller is null, cannot play")
+            connect()
+        }
     }
 
     fun play() {
@@ -91,10 +109,11 @@ class PlayerController(private val context: Context) {
     }
 
     fun togglePlayPause() {
-        if (controller?.isPlaying == true) {
-            pause()
+        val c = controller ?: return
+        if (c.isPlaying) {
+            c.pause()
         } else {
-            play()
+            c.play()
         }
     }
 
@@ -106,15 +125,18 @@ class PlayerController(private val context: Context) {
         controller?.let { c ->
             _uiState.value = _uiState.value.copy(
                 currentPosition = c.currentPosition,
-                duration = c.duration.coerceAtLeast(0L),
+                duration = if (c.duration > 0) c.duration else 0L,
                 isPlaying = c.isPlaying
             )
         }
     }
 
     fun release() {
-        controller?.removeListener(playerListener)
-        controllerFuture?.let { MediaController.releaseFuture(it) }
+        try {
+            controller?.removeListener(playerListener)
+            controllerFuture?.let { MediaController.releaseFuture(it) }
+        } catch (_: Exception) {
+        }
         controller = null
         _uiState.value = PlayerUiState()
     }
