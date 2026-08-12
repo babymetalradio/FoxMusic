@@ -13,8 +13,8 @@ import androidx.compose.ui.platform.LocalContext
 
 private val FoxOrange = Color(0xFFFF6B35)
 private val FoxOrangeDark = Color(0xFFE85A2A)
-private val FoxDarkBg = Color(0xFF121212)
-private val FoxDarkSurface = Color(0xFF1E1E1E)
+private val FoxDarkBg = Color(0xFF0A0A0A)
+private val FoxDarkSurface = Color(0xFF161616)
 
 private val DarkColorScheme = darkColorScheme(
     primary = FoxOrange,
