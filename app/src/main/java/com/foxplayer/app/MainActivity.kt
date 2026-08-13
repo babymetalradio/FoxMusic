@@ -892,7 +892,7 @@ fun PlaylistsSection(
                 }
             }
             if (songsInPl.isEmpty()) {
-                Box(Modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Playlist vacía\nMantén pulsada una canción para añadirla", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.outline)
                 }
             } else {
