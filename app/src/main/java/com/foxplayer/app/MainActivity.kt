@@ -37,6 +37,12 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.ui.layout.ContentScale
+import androidx.media3.common.Player
+import coil.compose.AsyncImage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -378,12 +384,21 @@ fun SongRow(song: Song, onClick: () -> Unit) {
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                Icons.Default.MusicNote,
-                null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
+            if (song.artworkUri != null) {
+                AsyncImage(
+                    model = song.artworkUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    Icons.Default.MusicNote,
+                    null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -451,12 +466,21 @@ fun PlayerScreen(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.MusicNote,
-                    null,
-                    Modifier.size(90.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                if (uiState.artworkUri != null) {
+                    AsyncImage(
+                        model = uiState.artworkUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.MusicNote,
+                        null,
+                        Modifier.size(90.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(36.dp))
             Text(
@@ -533,6 +557,33 @@ fun PlayerScreen(
                     Icon(Icons.Default.SkipNext, "Siguiente", Modifier.size(38.dp))
                 }
             }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(40.dp)
+            ) {
+                IconButton(onClick = { controller.toggleShuffle() }) {
+                    Icon(
+                        Icons.Default.Shuffle,
+                        contentDescription = "Aleatorio",
+                        tint = if (uiState.shuffleEnabled)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+                IconButton(onClick = { controller.cycleRepeatMode() }) {
+                    val (icon, tint) = when (uiState.repeatMode) {
+                        Player.REPEAT_MODE_ONE -> Icons.Default.RepeatOne to MaterialTheme.colorScheme.primary
+                        Player.REPEAT_MODE_ALL -> Icons.Default.Repeat to MaterialTheme.colorScheme.primary
+                        else -> Icons.Default.Repeat to MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    }
+                    Icon(icon, contentDescription = "Repetir", tint = tint)
+                }
+            }
+
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 if (uiState.isConnected) "● Conectado" else "○ Conectando...",

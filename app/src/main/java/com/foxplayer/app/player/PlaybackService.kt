@@ -2,10 +2,11 @@ package com.foxplayer.app.player
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
+import androidx.media3.common.MediaMetadata
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -56,16 +57,21 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
-        // Helper to create a MediaItem from a local path or URL
-        fun mediaItemFromUri(uri: String, title: String = "Unknown", artist: String = "Unknown"): MediaItem {
+        fun mediaItemFromUri(
+            uri: String,
+            title: String = "Unknown",
+            artist: String = "Unknown",
+            artworkUri: String? = null
+        ): MediaItem {
+            val metadataBuilder = MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtist(artist)
+            if (!artworkUri.isNullOrBlank()) {
+                metadataBuilder.setArtworkUri(Uri.parse(artworkUri))
+            }
             return MediaItem.Builder()
                 .setUri(uri)
-                .setMediaMetadata(
-                    androidx.media3.common.MediaMetadata.Builder()
-                        .setTitle(title)
-                        .setArtist(artist)
-                        .build()
-                )
+                .setMediaMetadata(metadataBuilder.build())
                 .build()
         }
     }

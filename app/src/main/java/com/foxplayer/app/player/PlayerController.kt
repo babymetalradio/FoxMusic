@@ -18,9 +18,12 @@ data class PlayerUiState(
     val isPlaying: Boolean = false,
     val title: String = "Ninguna canción",
     val artist: String = "",
+    val artworkUri: String? = null,
     val currentPosition: Long = 0L,
     val duration: Long = 0L,
-    val isConnected: Boolean = false
+    val isConnected: Boolean = false,
+    val shuffleEnabled: Boolean = false,
+    val repeatMode: Int = Player.REPEAT_MODE_OFF
 )
 
 class PlayerController(private val context: Context) {
@@ -40,12 +43,21 @@ class PlayerController(private val context: Context) {
             val metadata = mediaItem?.mediaMetadata
             _uiState.value = _uiState.value.copy(
                 title = metadata?.title?.toString() ?: "Desconocido",
-                artist = metadata?.artist?.toString() ?: ""
+                artist = metadata?.artist?.toString() ?: "",
+                artworkUri = metadata?.artworkUri?.toString()
             )
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             updatePosition()
+        }
+
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+            _uiState.value = _uiState.value.copy(shuffleEnabled = shuffleModeEnabled)
+        }
+
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            _uiState.value = _uiState.value.copy(repeatMode = repeatMode)
         }
     }
 
@@ -61,16 +73,7 @@ class PlayerController(private val context: Context) {
                     controller = controllerFuture?.get()
                     controller?.addListener(playerListener)
                     _uiState.value = _uiState.value.copy(isConnected = true)
-                    controller?.let { c ->
-                        val metadata = c.mediaMetadata
-                        _uiState.value = _uiState.value.copy(
-                            isPlaying = c.isPlaying,
-                            title = metadata.title?.toString() ?: "Ninguna canción",
-                            artist = metadata.artist?.toString() ?: "",
-                            duration = if (c.duration > 0) c.duration else 0L,
-                            currentPosition = c.currentPosition
-                        )
-                    }
+                    syncFromController()
                 } catch (e: Exception) {
                     Log.e("PlayerController", "Error connecting controller", e)
                     _uiState.value = _uiState.value.copy(isConnected = false)
@@ -81,14 +84,30 @@ class PlayerController(private val context: Context) {
         }
     }
 
-    fun playUri(uri: String, title: String = "Streaming", artist: String = "Fox Music") {
-        val item = PlaybackService.mediaItemFromUri(uri, title, artist)
+    private fun syncFromController() {
+        controller?.let { c ->
+            val metadata = c.mediaMetadata
+            _uiState.value = _uiState.value.copy(
+                isPlaying = c.isPlaying,
+                title = metadata.title?.toString() ?: "Ninguna canción",
+                artist = metadata.artist?.toString() ?: "",
+                artworkUri = metadata.artworkUri?.toString(),
+                duration = if (c.duration > 0) c.duration else 0L,
+                currentPosition = c.currentPosition,
+                shuffleEnabled = c.shuffleModeEnabled,
+                repeatMode = c.repeatMode
+            )
+        }
+    }
+
+    fun playUri(uri: String, title: String = "Streaming", artist: String = "Fox Music", artworkUri: String? = null) {
+        val item = PlaybackService.mediaItemFromUri(uri, title, artist, artworkUri)
         val c = controller
         if (c != null) {
             c.setMediaItem(item)
             c.prepare()
             c.play()
-            _uiState.value = _uiState.value.copy(title = title, artist = artist)
+            _uiState.value = _uiState.value.copy(title = title, artist = artist, artworkUri = artworkUri)
         } else {
             Log.e("PlayerController", "Controller is null, cannot play")
             connect()
@@ -96,7 +115,7 @@ class PlayerController(private val context: Context) {
     }
 
     fun playSong(song: Song) {
-        playUri(song.uri, song.title, song.artist)
+        playUri(song.uri, song.title, song.artist, song.artworkUri)
     }
 
     fun playQueue(songs: List<Song>, startIndex: Int = 0) {
@@ -106,14 +125,18 @@ class PlayerController(private val context: Context) {
         }
         if (songs.isEmpty()) return
         val items = songs.map {
-            PlaybackService.mediaItemFromUri(it.uri, it.title, it.artist)
+            PlaybackService.mediaItemFromUri(it.uri, it.title, it.artist, it.artworkUri)
         }
         c.setMediaItems(items, startIndex, 0L)
         c.prepare()
         c.play()
         val current = songs.getOrNull(startIndex)
         if (current != null) {
-            _uiState.value = _uiState.value.copy(title = current.title, artist = current.artist)
+            _uiState.value = _uiState.value.copy(
+                title = current.title,
+                artist = current.artist,
+                artworkUri = current.artworkUri
+            )
         }
     }
 
@@ -128,6 +151,24 @@ class PlayerController(private val context: Context) {
     fun seekTo(position: Long) { controller?.seekTo(position) }
     fun skipNext() { controller?.seekToNextMediaItem() }
     fun skipPrevious() { controller?.seekToPreviousMediaItem() }
+
+    fun toggleShuffle() {
+        val c = controller ?: return
+        val newValue = !c.shuffleModeEnabled
+        c.shuffleModeEnabled = newValue
+        _uiState.value = _uiState.value.copy(shuffleEnabled = newValue)
+    }
+
+    fun cycleRepeatMode() {
+        val c = controller ?: return
+        val next = when (c.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ONE
+            Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_ALL
+            else -> Player.REPEAT_MODE_OFF
+        }
+        c.repeatMode = next
+        _uiState.value = _uiState.value.copy(repeatMode = next)
+    }
 
     fun updatePosition() {
         controller?.let { c ->

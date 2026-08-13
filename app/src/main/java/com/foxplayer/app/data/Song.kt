@@ -7,7 +7,8 @@ data class Song(
     val album: String,
     val duration: Long,
     val uri: String,
-    val albumId: Long = 0L
+    val albumId: Long = 0L,
+    val artworkUri: String? = null
 ) {
     val durationFormatted: String
         get() {

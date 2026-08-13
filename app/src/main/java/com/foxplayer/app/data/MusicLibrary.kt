@@ -2,6 +2,7 @@ package com.foxplayer.app.data
 
 import android.content.ContentUris
 import android.content.Context
+import android.net.Uri
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -10,7 +11,6 @@ class MusicLibrary(private val context: Context) {
 
     suspend fun loadSongs(): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
-
         val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 
         val projection = arrayOf(
@@ -26,11 +26,7 @@ class MusicLibrary(private val context: Context) {
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
 
         context.contentResolver.query(
-            collection,
-            projection,
-            selection,
-            null,
-            sortOrder
+            collection, projection, selection, null, sortOrder
         )?.use { cursor ->
             val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
             val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
@@ -47,13 +43,18 @@ class MusicLibrary(private val context: Context) {
                 val duration = cursor.getLong(durationCol)
                 val albumId = cursor.getLong(albumIdCol)
 
+                if (duration < 10_000) continue
+
                 val contentUri = ContentUris.withAppendedId(
-                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                    id
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id
                 ).toString()
 
-                // Skip very short files (likely ringtones/notifications)
-                if (duration < 10_000) continue
+                val artworkUri = if (albumId > 0) {
+                    ContentUris.withAppendedId(
+                        Uri.parse("content://media/external/audio/albumart"),
+                        albumId
+                    ).toString()
+                } else null
 
                 songs.add(
                     Song(
@@ -63,12 +64,12 @@ class MusicLibrary(private val context: Context) {
                         album = album,
                         duration = duration,
                         uri = contentUri,
-                        albumId = albumId
+                        albumId = albumId,
+                        artworkUri = artworkUri
                     )
                 )
             }
         }
-
         songs
     }
 }
