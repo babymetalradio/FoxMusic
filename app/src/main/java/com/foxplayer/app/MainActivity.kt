@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -207,19 +209,12 @@ fun FoxMusicApp(controller: PlayerController) {
                         )
                     )
                 },
-                floatingActionButton = {
-                    if (uiState.title != "Ninguna canción") {
-                        FloatingActionButton(
-                            onClick = { currentScreen = Screen.Player },
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = Color.White
-                        ) {
-                            Icon(
-                                if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = "Reproductor"
-                            )
-                        }
-                    }
+                bottomBar = {
+                    MiniPlayer(
+                        uiState = uiState,
+                        onTogglePlay = { controller.togglePlayPause() },
+                        onOpenPlayer = { currentScreen = Screen.Player }
+                    )
                 }
             ) { padding ->
                 Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -312,7 +307,7 @@ fun FoxMusicApp(controller: PlayerController) {
                                     )
                                 }
                             } else {
-                                LazyColumn(contentPadding = PaddingValues(bottom = 88.dp)) {
+                                LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
                                     itemsIndexed(
                                         filteredSongs,
                                         key = { _, song -> song.id }
@@ -654,6 +649,84 @@ fun PlayerScreen(
                 },
                 modifier = Modifier.padding(bottom = 16.dp)
             )
+        }
+    }
+}
+
+
+@Composable
+fun MiniPlayer(
+    uiState: com.foxplayer.app.player.PlayerUiState,
+    onTogglePlay: () -> Unit,
+    onOpenPlayer: () -> Unit
+) {
+    if (uiState.title == "Ninguna canción") return
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f))
+            .navigationBarsPadding()
+    ) {
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenPlayer)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surface),
+                contentAlignment = Alignment.Center
+            ) {
+                if (uiState.artworkUri != null) {
+                    AsyncImage(
+                        model = uiState.artworkUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.MusicNote,
+                        null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = uiState.title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = uiState.artist.ifBlank { " " },
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = onTogglePlay) {
+                Icon(
+                    if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (uiState.isPlaying) "Pausar" else "Reproducir",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
         }
     }
 }
