@@ -1,28 +1,33 @@
 # Fox Music 🦊🎵
 
-Reproductor de música para Android con soporte de **archivos locales** y **streaming genérico**.
+Reproductor de música para Android con **archivos locales** y **streaming genérico**.
 
 - **Package**: `com.foxplayer.app`
 - **UI**: Jetpack Compose + Material 3
 - **Reproductor**: Media3 (ExoPlayer) + MediaSession
 - **CI/CD**: GitHub Actions
 
-## Estado actual (v1.1.0)
+## Estado actual (v1.3.0)
 
 - ✅ Reproductor con Media3
-- ✅ Servicio en segundo plano (MediaSessionService)
-- ✅ Controles Play / Pause
+- ✅ Servicio en segundo plano
+- ✅ Controles Play / Pause / Next / Previous
 - ✅ Barra de progreso
-- ✅ Reproducción por URL (streaming)
-- ⏳ Biblioteca local (próximo)
+- ✅ Streaming por URL (diálogo)
+- ✅ **Biblioteca local** (MediaStore)
+- ✅ Lista de canciones + cola de reproducción
+- ✅ Permisos de audio
 - ⏳ Playlists y favoritos (próximo)
+- ⏳ Shuffle / Repeat (próximo)
 
-## Cómo probar streaming
+## Cómo usar
 
-1. Abre la app
-2. Pega una URL directa de un archivo de audio (ej: `.mp3`)
-3. Pulsa **Reproducir URL**
+1. Al abrir, concede el permiso de audio
+2. Verás tu biblioteca local
+3. Toca una canción para reproducirla (se carga la cola completa)
+4. Icono 🔗 para streaming por URL
+5. Botón flotante para volver al reproductor
 
 ## Build
 
-El APK se genera automáticamente con GitHub Actions en cada push a `main`.
+APK automático con GitHub Actions en cada push a `main`.

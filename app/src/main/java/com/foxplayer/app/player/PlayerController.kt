@@ -7,6 +7,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.foxplayer.app.data.Song
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,14 +55,12 @@ class PlayerController(private val context: Context) {
                 context,
                 ComponentName(context, PlaybackService::class.java)
             )
-
             controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
             controllerFuture?.addListener({
                 try {
                     controller = controllerFuture?.get()
                     controller?.addListener(playerListener)
                     _uiState.value = _uiState.value.copy(isConnected = true)
-
                     controller?.let { c ->
                         val metadata = c.mediaMetadata
                         _uiState.value = _uiState.value.copy(
@@ -84,42 +83,51 @@ class PlayerController(private val context: Context) {
 
     fun playUri(uri: String, title: String = "Streaming", artist: String = "Fox Music") {
         val item = PlaybackService.mediaItemFromUri(uri, title, artist)
-
         val c = controller
         if (c != null) {
             c.setMediaItem(item)
             c.prepare()
             c.play()
-            _uiState.value = _uiState.value.copy(
-                title = title,
-                artist = artist
-            )
+            _uiState.value = _uiState.value.copy(title = title, artist = artist)
         } else {
             Log.e("PlayerController", "Controller is null, cannot play")
             connect()
         }
     }
 
-    fun play() {
-        controller?.play()
+    fun playSong(song: Song) {
+        playUri(song.uri, song.title, song.artist)
     }
 
-    fun pause() {
-        controller?.pause()
-    }
-
-    fun togglePlayPause() {
-        val c = controller ?: return
-        if (c.isPlaying) {
-            c.pause()
-        } else {
-            c.play()
+    fun playQueue(songs: List<Song>, startIndex: Int = 0) {
+        val c = controller ?: run {
+            connect()
+            return
+        }
+        if (songs.isEmpty()) return
+        val items = songs.map {
+            PlaybackService.mediaItemFromUri(it.uri, it.title, it.artist)
+        }
+        c.setMediaItems(items, startIndex, 0L)
+        c.prepare()
+        c.play()
+        val current = songs.getOrNull(startIndex)
+        if (current != null) {
+            _uiState.value = _uiState.value.copy(title = current.title, artist = current.artist)
         }
     }
 
-    fun seekTo(position: Long) {
-        controller?.seekTo(position)
+    fun play() { controller?.play() }
+    fun pause() { controller?.pause() }
+
+    fun togglePlayPause() {
+        val c = controller ?: return
+        if (c.isPlaying) c.pause() else c.play()
     }
+
+    fun seekTo(position: Long) { controller?.seekTo(position) }
+    fun skipNext() { controller?.seekToNextMediaItem() }
+    fun skipPrevious() { controller?.seekToPreviousMediaItem() }
 
     fun updatePosition() {
         controller?.let { c ->
@@ -135,8 +143,7 @@ class PlayerController(private val context: Context) {
         try {
             controller?.removeListener(playerListener)
             controllerFuture?.let { MediaController.releaseFuture(it) }
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
         controller = null
         _uiState.value = PlayerUiState()
     }
