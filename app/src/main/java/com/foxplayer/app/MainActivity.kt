@@ -11,6 +11,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,10 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Shuffle
@@ -85,6 +91,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.foxplayer.app.data.MusicLibrary
 import com.foxplayer.app.data.Song
+import com.foxplayer.app.data.Playlist
+import com.foxplayer.app.data.PlaylistStore
 import com.foxplayer.app.player.PlayerController
 import com.foxplayer.app.ui.theme.FoxMusicTheme
 import kotlinx.coroutines.delay
@@ -113,6 +121,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class Screen { Library, Player }
+private enum class LibraryTab { Songs, Playlists }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,6 +137,14 @@ fun FoxMusicApp(controller: PlayerController) {
     var showUrlDialog by remember { mutableStateOf(false) }
     var urlInput by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
+    var libraryTab by remember { mutableStateOf(LibraryTab.Songs) }
+    val playlistStore = remember { PlaylistStore(context) }
+    var playlists by remember { mutableStateOf(playlistStore.getAll()) }
+    var selectedPlaylistId by remember { mutableStateOf<String?>(null) }
+    var showCreatePlaylist by remember { mutableStateOf(false) }
+    var newPlaylistName by remember { mutableStateOf("") }
+    var songForPlaylist by remember { mutableStateOf<Song?>(null) }
+    var showAddToPlaylist by remember { mutableStateOf(false) }
 
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -197,8 +214,14 @@ fun FoxMusicApp(controller: PlayerController) {
                             )
                         },
                         actions = {
-                            IconButton(onClick = { checkAndLoad() }) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Actualizar")
+                            if (libraryTab == LibraryTab.Playlists) {
+                                IconButton(onClick = { showCreatePlaylist = true }) {
+                                    Icon(Icons.Default.Add, contentDescription = "Nueva playlist")
+                                }
+                            } else {
+                                IconButton(onClick = { checkAndLoad() }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Actualizar")
+                                }
                             }
                             IconButton(onClick = { showUrlDialog = true }) {
                                 Icon(Icons.Default.Link, contentDescription = "URL")
@@ -218,7 +241,67 @@ fun FoxMusicApp(controller: PlayerController) {
                 }
             ) { padding ->
                 Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                    // Tabs Canciones / Playlists
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TabChip(
+                            label = "Canciones",
+                            selected = libraryTab == LibraryTab.Songs,
+                            onClick = {
+                                libraryTab = LibraryTab.Songs
+                                selectedPlaylistId = null
+                            }
+                        )
+                        TabChip(
+                            label = "Playlists",
+                            selected = libraryTab == LibraryTab.Playlists,
+                            onClick = {
+                                libraryTab = LibraryTab.Playlists
+                                selectedPlaylistId = null
+                                playlists = playlistStore.getAll()
+                            }
+                        )
+                    }
+
                     when {
+                        libraryTab == LibraryTab.Playlists -> {
+                            PlaylistsSection(
+                                playlists = playlists,
+                                allSongs = songs,
+                                selectedPlaylistId = selectedPlaylistId,
+                                onSelectPlaylist = { selectedPlaylistId = it },
+                                onBackFromDetail = { selectedPlaylistId = null },
+                                onDeletePlaylist = { id ->
+                                    playlistStore.delete(id)
+                                    playlists = playlistStore.getAll()
+                                    if (selectedPlaylistId == id) selectedPlaylistId = null
+                                },
+                                onPlayPlaylist = { pl ->
+                                    val list = playlistStore.resolveSongs(pl, songs)
+                                    if (list.isNotEmpty()) {
+                                        controller.playQueue(list, 0)
+                                        currentScreen = Screen.Player
+                                    }
+                                },
+                                onPlaySongInPlaylist = { pl, index ->
+                                    val list = playlistStore.resolveSongs(pl, songs)
+                                    if (list.isNotEmpty()) {
+                                        controller.playQueue(list, index)
+                                        currentScreen = Screen.Player
+                                    }
+                                },
+                                onRemoveSong = { plId, songId ->
+                                    playlistStore.removeSong(plId, songId)
+                                    playlists = playlistStore.getAll()
+                                },
+                                onCreate = { showCreatePlaylist = true }
+                            )
+                        }
+
                         !hasPermission -> PermissionPrompt(onRequest = {
                             permissionLauncher.launch(permission)
                         })
@@ -315,7 +398,6 @@ fun FoxMusicApp(controller: PlayerController) {
                                         SongRow(
                                             song = song,
                                             onClick = {
-                                                // Play filtered list as queue, or full library from that song
                                                 val fullIndex = songs.indexOfFirst { it.id == song.id }
                                                 if (fullIndex >= 0) {
                                                     controller.playQueue(songs, fullIndex)
@@ -323,6 +405,11 @@ fun FoxMusicApp(controller: PlayerController) {
                                                     controller.playQueue(filteredSongs, index)
                                                 }
                                                 currentScreen = Screen.Player
+                                            },
+                                            onLongClick = {
+                                                songForPlaylist = song
+                                                showAddToPlaylist = true
+                                                playlists = playlistStore.getAll()
                                             }
                                         )
                                     }
@@ -386,6 +473,94 @@ fun FoxMusicApp(controller: PlayerController) {
             }
         )
     }
+
+    if (showCreatePlaylist) {
+        AlertDialog(
+            onDismissRequest = { showCreatePlaylist = false },
+            title = { Text("Nueva playlist", fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = newPlaylistName,
+                    onValueChange = { newPlaylistName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Nombre de la playlist") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newPlaylistName.isNotBlank()) {
+                            playlistStore.create(newPlaylistName)
+                            playlists = playlistStore.getAll()
+                            newPlaylistName = ""
+                            showCreatePlaylist = false
+                            libraryTab = LibraryTab.Playlists
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) { Text("Crear") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreatePlaylist = false }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    if (showAddToPlaylist && songForPlaylist != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showAddToPlaylist = false
+                songForPlaylist = null
+            },
+            title = { Text("Añadir a playlist", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        songForPlaylist!!.title,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (playlists.isEmpty()) {
+                        Text("No hay playlists. Crea una primero.")
+                    } else {
+                        playlists.forEach { pl ->
+                            Text(
+                                text = "${pl.name} (${pl.songIds.size})",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        playlistStore.addSong(pl.id, songForPlaylist!!.id)
+                                        playlists = playlistStore.getAll()
+                                        showAddToPlaylist = false
+                                        songForPlaylist = null
+                                    }
+                                    .padding(vertical = 12.dp),
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAddToPlaylist = false
+                    songForPlaylist = null
+                    showCreatePlaylist = true
+                }) { Text("Nueva playlist") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAddToPlaylist = false
+                    songForPlaylist = null
+                }) { Text("Cancelar") }
+            }
+        )
+    }
+
 }
 
 @Composable
@@ -422,12 +597,20 @@ fun PermissionPrompt(onRequest: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SongRow(song: Song, onClick: () -> Unit) {
+fun SongRow(
+    song: Song,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -653,6 +836,124 @@ fun PlayerScreen(
     }
 }
 
+
+
+@Composable
+fun TabChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (selected) Color.White
+            else MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Text(label)
+    }
+}
+
+@Composable
+fun PlaylistsSection(
+    playlists: List<Playlist>,
+    allSongs: List<Song>,
+    selectedPlaylistId: String?,
+    onSelectPlaylist: (String) -> Unit,
+    onBackFromDetail: () -> Unit,
+    onDeletePlaylist: (String) -> Unit,
+    onPlayPlaylist: (Playlist) -> Unit,
+    onPlaySongInPlaylist: (Playlist, Int) -> Unit,
+    onRemoveSong: (String, Long) -> Unit,
+    onCreate: () -> Unit
+) {
+    val selected = playlists.find { it.id == selectedPlaylistId }
+
+    if (selected != null) {
+        val songsInPl = selected.songIds.mapNotNull { id -> allSongs.find { it.id == id } }
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBackFromDetail) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(selected.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("${songsInPl.size} canciones", fontSize = 13.sp, color = MaterialTheme.colorScheme.outline)
+                }
+                IconButton(onClick = { onPlayPlaylist(selected) }) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Reproducir", tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = { onDeletePlaylist(selected.id) }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Eliminar")
+                }
+            }
+            if (songsInPl.isEmpty()) {
+                Box(Modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Playlist vacía\nMantén pulsada una canción para añadirla", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.outline)
+                }
+            } else {
+                LazyColumn {
+                    itemsIndexed(songsInPl, key = { _, s -> s.id }) { index, song ->
+                        SongRow(
+                            song = song,
+                            onClick = { onPlaySongInPlaylist(selected, index) },
+                            onLongClick = { onRemoveSong(selected.id, song.id) }
+                        )
+                    }
+                }
+            }
+        }
+    } else if (playlists.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.QueueMusic, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.outline)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("No hay playlists")
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = onCreate) { Text("Crear playlist") }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Tip: mantén pulsada una canción para añadirla",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.outline,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+            }
+        }
+    } else {
+        LazyColumn {
+            itemsIndexed(playlists, key = { _, p -> p.id }) { _, pl ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectPlaylist(pl.id) }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.QueueMusic,
+                        null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(pl.name, fontWeight = FontWeight.Medium, fontSize = 16.sp)
+                        Text("${pl.songIds.size} canciones", fontSize = 13.sp, color = MaterialTheme.colorScheme.outline)
+                    }
+                    IconButton(onClick = { onPlayPlaylist(pl) }) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = "Reproducir")
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun MiniPlayer(
