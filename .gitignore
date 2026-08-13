@@ -18,8 +18,10 @@ out/
 .navigation/
 captures/
 output.json
+# Ignore keystores EXCEPT our stable debug keystore
 *.jks
 *.keystore
+!app/foxmusic-debug.jks
 google-services.json
 *.log
 .cxx/
