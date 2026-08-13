@@ -12,15 +12,28 @@ android {
         applicationId = "com.foxplayer.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.4.0"
+        versionCode = 5
+        versionName = "1.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("foxDebug") {
+            storeFile = file("foxmusic-debug.jks")
+            storePassword = "foxmusic123"
+            keyAlias = "foxmusic"
+            keyPassword = "foxmusic123"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("foxDebug")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("foxDebug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -59,7 +72,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Media3
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-session:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")

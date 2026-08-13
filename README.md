@@ -1,22 +1,16 @@
 # Fox Music 🦊🎵
 
-Reproductor de música para Android con **archivos locales** y **streaming genérico**.
+## v1.5.0
 
-## Estado actual (v1.4.0)
-
-- ✅ Reproductor Media3 + servicio en segundo plano
-- ✅ Biblioteca local (MediaStore)
-- ✅ Cola de reproducción
+- ✅ Biblioteca local + portadas
+- ✅ Shuffle / Repeat
 - ✅ Streaming por URL
-- ✅ **Shuffle / Repeat**
-- ✅ **Portadas de álbum**
-- ⏳ Playlists y favoritos
-- ⏳ Mini-player
-- ⏳ Búsqueda
+- ✅ **Búsqueda** (título, artista, álbum)
+- ✅ **Firmado estable** (ya no hace falta desinstalar en cada update)
+- ⏳ Mini-player (siguiente)
+- ⏳ Favoritos / Playlists
 
-## Uso
+## Actualizaciones sin desinstalar
 
-1. Concede permiso de audio
-2. Toca una canción de la lista
-3. En el reproductor: aleatorio 🔀 y repetir 🔁
-4. Icono 🔗 para URL de streaming
+Los APK de GitHub Actions se firman siempre con la misma keystore (`app/foxmusic-debug.jks`).
+**Solo la primera vez** tras instalar esta versión puede que tengas que desinstalar la anterior (firmada con otra clave). A partir de aquí, las actualizaciones deberían instalarse encima sin problema.

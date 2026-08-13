@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Shuffle
@@ -123,6 +125,7 @@ fun FoxMusicApp(controller: PlayerController) {
     var hasPermission by remember { mutableStateOf(false) }
     var showUrlDialog by remember { mutableStateOf(false) }
     var urlInput by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
 
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -164,6 +167,18 @@ fun FoxMusicApp(controller: PlayerController) {
         while (uiState.isPlaying) {
             controller.updatePosition()
             delay(500)
+        }
+    }
+
+    val filteredSongs = remember(songs, searchQuery) {
+        if (searchQuery.isBlank()) songs
+        else {
+            val q = searchQuery.trim().lowercase()
+            songs.filter {
+                it.title.lowercase().contains(q) ||
+                    it.artist.lowercase().contains(q) ||
+                    it.album.lowercase().contains(q)
+            }
         }
     }
 
@@ -257,21 +272,65 @@ fun FoxMusicApp(controller: PlayerController) {
                             }
                         }
                         else -> {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                placeholder = { Text("Buscar canción, artista o álbum") },
+                                singleLine = true,
+                                leadingIcon = {
+                                    Icon(Icons.Default.Search, contentDescription = null)
+                                },
+                                trailingIcon = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { searchQuery = "" }) {
+                                            Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+                                        }
+                                    }
+                                }
+                            )
                             Text(
-                                text = "${songs.size} canciones",
+                                text = if (searchQuery.isBlank()) {
+                                    "${songs.size} canciones"
+                                } else {
+                                    "${filteredSongs.size} resultados"
+                                },
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                             )
-                            LazyColumn(contentPadding = PaddingValues(bottom = 88.dp)) {
-                                itemsIndexed(songs, key = { _, song -> song.id }) { index, song ->
-                                    SongRow(
-                                        song = song,
-                                        onClick = {
-                                            controller.playQueue(songs, index)
-                                            currentScreen = Screen.Player
-                                        }
+                            if (filteredSongs.isEmpty()) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "Sin resultados para \"$searchQuery\"",
+                                        color = MaterialTheme.colorScheme.outline
                                     )
+                                }
+                            } else {
+                                LazyColumn(contentPadding = PaddingValues(bottom = 88.dp)) {
+                                    itemsIndexed(
+                                        filteredSongs,
+                                        key = { _, song -> song.id }
+                                    ) { index, song ->
+                                        SongRow(
+                                            song = song,
+                                            onClick = {
+                                                // Play filtered list as queue, or full library from that song
+                                                val fullIndex = songs.indexOfFirst { it.id == song.id }
+                                                if (fullIndex >= 0) {
+                                                    controller.playQueue(songs, fullIndex)
+                                                } else {
+                                                    controller.playQueue(filteredSongs, index)
+                                                }
+                                                currentScreen = Screen.Player
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
