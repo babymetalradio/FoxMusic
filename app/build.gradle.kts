@@ -12,8 +12,8 @@ android {
         applicationId = "com.foxplayer.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.8.0"
+        versionCode = 10
+        versionName = "1.10.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

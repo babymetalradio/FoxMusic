@@ -1,8 +1,8 @@
-# Fox Music 🦊🎵
+# Fox Music / FOXGOD MUSIC 🦊🎵
 
-## v1.8.0 — Carpetas de música
+## v1.10.0
 
-- Icono 📁 en la barra: gestionar carpetas
-- Sin carpetas = escanear toda la música del dispositivo
-- Con carpetas = solo esas (selector del sistema)
-- Playlists, búsqueda, mini-player, etc.
+- Metadatos reales en modo carpetas (título, artista, álbum, duración)
+- Portadas embebidas del archivo (ID3 / tags)
+- IDs estables para que las playlists no se rompan al reescanear
+- Icono FOXGOD MUSIC

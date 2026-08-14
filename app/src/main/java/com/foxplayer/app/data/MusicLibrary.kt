@@ -2,13 +2,14 @@ package com.foxplayer.app.data
 
 import android.content.ContentUris
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.provider.MediaStore
-import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.security.MessageDigest
 
 class MusicLibrary(private val context: Context) {
 
@@ -86,11 +87,11 @@ class MusicLibrary(private val context: Context) {
 
     private fun loadFromFolders(folders: List<MusicFolder>): List<Song> {
         val songs = mutableListOf<Song>()
-        var nextId = 1L
+        val artCacheDir = File(context.cacheDir, "album_art").apply { mkdirs() }
 
         folders.forEach { folder ->
             val root = DocumentFile.fromTreeUri(context, Uri.parse(folder.uri)) ?: return@forEach
-            scanDocumentTree(root, folder.name, songs) { nextId++ }
+            scanDocumentTree(root, folder.name, songs, artCacheDir)
         }
 
         return songs.sortedBy { it.title.lowercase() }
@@ -100,29 +101,92 @@ class MusicLibrary(private val context: Context) {
         dir: DocumentFile,
         folderLabel: String,
         out: MutableList<Song>,
-        nextId: () -> Long
+        artCacheDir: File
     ) {
         val files = dir.listFiles() ?: return
         for (file in files) {
             if (file.isDirectory) {
-                scanDocumentTree(file, folderLabel, out, nextId)
+                scanDocumentTree(file, folderLabel, out, artCacheDir)
             } else if (file.isFile && isAudioFile(file)) {
-                val name = file.name ?: continue
-                val title = name.substringBeforeLast('.')
-                out.add(
-                    Song(
-                        id = nextId(),
-                        title = title,
-                        artist = folderLabel,
-                        album = dir.name ?: folderLabel,
-                        duration = 0L,
-                        uri = file.uri.toString(),
-                        albumId = 0L,
-                        artworkUri = null
-                    )
-                )
+                parseAudioFile(file, folderLabel, dir.name ?: folderLabel, artCacheDir)?.let {
+                    out.add(it)
+                }
             }
         }
+    }
+
+    private fun parseAudioFile(
+        file: DocumentFile,
+        folderLabel: String,
+        parentDirName: String,
+        artCacheDir: File
+    ): Song? {
+        val uri = file.uri
+        val uriStr = uri.toString()
+        val fallbackName = file.name?.substringBeforeLast('.') ?: "Desconocido"
+
+        var title = fallbackName
+        var artist = folderLabel
+        var album = parentDirName
+        var duration = 0L
+        var artworkUri: String? = null
+
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, uri)
+
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { title = it }
+
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                ?.takeIf { it.isNotBlank() && it != "<unknown>" }
+                ?.let { artist = it }
+                ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+                    ?.takeIf { it.isNotBlank() && it != "<unknown>" }
+                    ?.let { artist = it }
+
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { album = it }
+
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?.let { duration = it }
+
+            // Skip very short files (ringtones/notifications)
+            if (duration in 1 until 10_000) return null
+
+            // Embedded artwork
+            val picture = retriever.embeddedPicture
+            if (picture != null && picture.isNotEmpty()) {
+                val artFile = File(artCacheDir, "${stableId(uriStr)}.jpg")
+                if (!artFile.exists() || artFile.length() == 0L) {
+                    artFile.writeBytes(picture)
+                }
+                if (artFile.exists() && artFile.length() > 0L) {
+                    artworkUri = artFile.toURI().toString()
+                }
+            }
+        } catch (_: Exception) {
+            // Keep filename-based fallbacks
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
+        }
+
+        return Song(
+            id = stableId(uriStr),
+            title = title,
+            artist = artist,
+            album = album,
+            duration = duration,
+            uri = uriStr,
+            albumId = 0L,
+            artworkUri = artworkUri
+        )
     }
 
     private fun isAudioFile(file: DocumentFile): Boolean {
@@ -131,5 +195,16 @@ class MusicLibrary(private val context: Context) {
         if (ext in audioExtensions) return true
         val mime = file.type ?: return false
         return mime.startsWith("audio/")
+    }
+
+    /** Stable positive Long from URI so playlists survive rescan */
+    private fun stableId(uri: String): Long {
+        val digest = MessageDigest.getInstance("MD5").digest(uri.toByteArray())
+        var value = 0L
+        for (i in 0 until 8) {
+            value = (value shl 8) or (digest[i].toLong() and 0xFF)
+        }
+        // Keep positive (MediaStore-like)
+        return value and Long.MAX_VALUE
     }
 }
