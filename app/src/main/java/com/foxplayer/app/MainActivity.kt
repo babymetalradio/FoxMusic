@@ -183,20 +183,24 @@ fun FoxMusicApp(controller: PlayerController) {
             musicFolders = folderStore.getFolders()
             scope.launch {
                 isLoading = true
-                songs = MusicLibrary(context).loadSongs(folderStore)
+                val lib = MusicLibrary(context)
+                lib.clearCache()
+                songs = lib.loadSongs(folderStore)
                 isLoading = false
             }
         }
     }
 
-    fun checkAndLoad() {
+    fun checkAndLoad(forceRefresh: Boolean = false) {
         val granted = ContextCompat.checkSelfPermission(context, permission) ==
                 PackageManager.PERMISSION_GRANTED
         hasPermission = granted
         if (granted) {
             scope.launch {
                 isLoading = true
-                songs = MusicLibrary(context).loadSongs(folderStore)
+                val lib = MusicLibrary(context)
+                if (forceRefresh) lib.clearCache()
+                songs = lib.loadSongs(folderStore)
                 isLoading = false
             }
         } else {
@@ -246,7 +250,7 @@ fun FoxMusicApp(controller: PlayerController) {
                                 IconButton(onClick = { showFoldersDialog = true }) {
                                     Icon(Icons.Default.Folder, contentDescription = "Carpetas")
                                 }
-                                IconButton(onClick = { checkAndLoad() }) {
+                                IconButton(onClick = { checkAndLoad(forceRefresh = true) }) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Actualizar")
                                 }
                             }
@@ -543,7 +547,9 @@ fun FoxMusicApp(controller: PlayerController) {
                                 musicFolders = folderStore.getFolders()
                                 scope.launch {
                                     isLoading = true
-                                    songs = MusicLibrary(context).loadSongs(folderStore)
+                                    val lib = MusicLibrary(context)
+                                    lib.clearCache()
+                                    songs = lib.loadSongs(folderStore)
                                     isLoading = false
                                 }
                             }) {

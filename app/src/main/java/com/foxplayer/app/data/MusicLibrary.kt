@@ -7,7 +7,14 @@ import android.net.Uri
 import android.provider.MediaStore
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 
@@ -17,13 +24,15 @@ class MusicLibrary(private val context: Context) {
         "mp3", "m4a", "aac", "flac", "wav", "ogg", "opus", "wma", "aiff", "alac"
     )
 
+    private val cachePrefs = context.getSharedPreferences("fox_library_cache", Context.MODE_PRIVATE)
+
     suspend fun loadSongs(folderStore: FolderStore = FolderStore(context)): List<Song> =
         withContext(Dispatchers.IO) {
             val folders = folderStore.getFolders()
             if (folders.isEmpty()) {
                 loadFromMediaStore()
             } else {
-                loadFromFolders(folders)
+                loadFromFoldersFast(folders)
             }
         }
 
@@ -85,41 +94,54 @@ class MusicLibrary(private val context: Context) {
         return songs
     }
 
-    private fun loadFromFolders(folders: List<MusicFolder>): List<Song> {
-        val songs = mutableListOf<Song>()
-        val artCacheDir = File(context.cacheDir, "album_art").apply { mkdirs() }
+    private suspend fun loadFromFoldersFast(folders: List<MusicFolder>): List<Song> =
+        coroutineScope {
+            val cacheKey = folders.joinToString("|") { it.uri }
+            val cached = readCache(cacheKey)
+            if (cached != null) return@coroutineScope cached
 
-        folders.forEach { folder ->
-            val root = DocumentFile.fromTreeUri(context, Uri.parse(folder.uri)) ?: return@forEach
-            scanDocumentTree(root, folder.name, songs, artCacheDir)
+            // 1) Collect all audio DocumentFiles quickly (no metadata)
+            val fileEntries = mutableListOf<Triple<DocumentFile, String, String>>()
+            folders.forEach { folder ->
+                val root = DocumentFile.fromTreeUri(context, Uri.parse(folder.uri)) ?: return@forEach
+                collectAudioFiles(root, folder.name, fileEntries)
+            }
+
+            // 2) Parse metadata in parallel (limited concurrency), NO embedded art
+            val semaphore = Semaphore(6)
+            val songs = fileEntries.map { (file, folderLabel, parentName) ->
+                async(Dispatchers.IO) {
+                    semaphore.withPermit {
+                        parseAudioFileFast(file, folderLabel, parentName)
+                    }
+                }
+            }.awaitAll().filterNotNull()
+
+            val sorted = songs.sortedBy { it.title.lowercase() }
+            writeCache(cacheKey, sorted)
+            sorted
         }
 
-        return songs.sortedBy { it.title.lowercase() }
-    }
-
-    private fun scanDocumentTree(
+    private fun collectAudioFiles(
         dir: DocumentFile,
         folderLabel: String,
-        out: MutableList<Song>,
-        artCacheDir: File
+        out: MutableList<Triple<DocumentFile, String, String>>
     ) {
         val files = dir.listFiles() ?: return
         for (file in files) {
             if (file.isDirectory) {
-                scanDocumentTree(file, folderLabel, out, artCacheDir)
+                collectAudioFiles(file, folderLabel, out)
             } else if (file.isFile && isAudioFile(file)) {
-                parseAudioFile(file, folderLabel, dir.name ?: folderLabel, artCacheDir)?.let {
-                    out.add(it)
-                }
+                out.add(Triple(file, folderLabel, dir.name ?: folderLabel))
             }
         }
     }
 
-    private fun parseAudioFile(
+    /** Fast path: title/artist/album/duration only — skip embedded pictures */
+    private fun parseAudioFileFast(
         file: DocumentFile,
         folderLabel: String,
-        parentDirName: String,
-        artCacheDir: File
+        parentDirName: String
     ): Song? {
         val uri = file.uri
         val uriStr = uri.toString()
@@ -129,7 +151,6 @@ class MusicLibrary(private val context: Context) {
         var artist = folderLabel
         var album = parentDirName
         var duration = 0L
-        var artworkUri: String? = null
 
         val retriever = MediaMetadataRetriever()
         try {
@@ -154,22 +175,8 @@ class MusicLibrary(private val context: Context) {
                 ?.toLongOrNull()
                 ?.let { duration = it }
 
-            // Skip very short files (ringtones/notifications)
             if (duration in 1 until 10_000) return null
-
-            // Embedded artwork
-            val picture = retriever.embeddedPicture
-            if (picture != null && picture.isNotEmpty()) {
-                val artFile = File(artCacheDir, "${stableId(uriStr)}.jpg")
-                if (!artFile.exists() || artFile.length() == 0L) {
-                    artFile.writeBytes(picture)
-                }
-                if (artFile.exists() && artFile.length() > 0L) {
-                    artworkUri = artFile.toURI().toString()
-                }
-            }
         } catch (_: Exception) {
-            // Keep filename-based fallbacks
         } finally {
             try {
                 retriever.release()
@@ -185,7 +192,7 @@ class MusicLibrary(private val context: Context) {
             duration = duration,
             uri = uriStr,
             albumId = 0L,
-            artworkUri = artworkUri
+            artworkUri = null
         )
     }
 
@@ -197,14 +204,67 @@ class MusicLibrary(private val context: Context) {
         return mime.startsWith("audio/")
     }
 
-    /** Stable positive Long from URI so playlists survive rescan */
     private fun stableId(uri: String): Long {
         val digest = MessageDigest.getInstance("MD5").digest(uri.toByteArray())
         var value = 0L
         for (i in 0 until 8) {
             value = (value shl 8) or (digest[i].toLong() and 0xFF)
         }
-        // Keep positive (MediaStore-like)
         return value and Long.MAX_VALUE
+    }
+
+    private fun readCache(key: String): List<Song>? {
+        val raw = cachePrefs.getString("songs_$key", null) ?: return null
+        val savedKey = cachePrefs.getString("key", null)
+        if (savedKey != key) return null
+        return try {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    add(
+                        Song(
+                            id = o.getLong("id"),
+                            title = o.getString("title"),
+                            artist = o.getString("artist"),
+                            album = o.optString("album", ""),
+                            duration = o.optLong("duration", 0L),
+                            uri = o.getString("uri"),
+                            albumId = 0L,
+                            artworkUri = o.optString("artworkUri", null).takeIf { !it.isNullOrBlank() }
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun writeCache(key: String, songs: List<Song>) {
+        try {
+            val arr = JSONArray()
+            songs.forEach { s ->
+                arr.put(
+                    JSONObject()
+                        .put("id", s.id)
+                        .put("title", s.title)
+                        .put("artist", s.artist)
+                        .put("album", s.album)
+                        .put("duration", s.duration)
+                        .put("uri", s.uri)
+                        .put("artworkUri", s.artworkUri ?: "")
+                )
+            }
+            cachePrefs.edit()
+                .putString("key", key)
+                .putString("songs_$key", arr.toString())
+                .apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun clearCache() {
+        cachePrefs.edit().clear().apply()
     }
 }
