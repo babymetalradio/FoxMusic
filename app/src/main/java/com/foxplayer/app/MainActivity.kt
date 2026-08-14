@@ -9,6 +9,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -42,6 +44,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.MoreVert
@@ -93,6 +97,8 @@ import com.foxplayer.app.data.MusicLibrary
 import com.foxplayer.app.data.Song
 import com.foxplayer.app.data.Playlist
 import com.foxplayer.app.data.PlaylistStore
+import com.foxplayer.app.data.FolderStore
+import com.foxplayer.app.data.MusicFolder
 import com.foxplayer.app.player.PlayerController
 import com.foxplayer.app.ui.theme.FoxMusicTheme
 import kotlinx.coroutines.delay
@@ -145,6 +151,9 @@ fun FoxMusicApp(controller: PlayerController) {
     var newPlaylistName by remember { mutableStateOf("") }
     var songForPlaylist by remember { mutableStateOf<Song?>(null) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
+    val folderStore = remember { FolderStore(context) }
+    var musicFolders by remember { mutableStateOf(folderStore.getFolders()) }
+    var showFoldersDialog by remember { mutableStateOf(false) }
 
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -159,7 +168,22 @@ fun FoxMusicApp(controller: PlayerController) {
         if (granted) {
             scope.launch {
                 isLoading = true
-                songs = MusicLibrary(context).loadSongs()
+                songs = MusicLibrary(context).loadSongs(folderStore)
+                isLoading = false
+            }
+        }
+    }
+
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val name = DocumentFile.fromTreeUri(context, uri)?.name ?: "Carpeta"
+            folderStore.addFolder(uri, name)
+            musicFolders = folderStore.getFolders()
+            scope.launch {
+                isLoading = true
+                songs = MusicLibrary(context).loadSongs(folderStore)
                 isLoading = false
             }
         }
@@ -172,7 +196,7 @@ fun FoxMusicApp(controller: PlayerController) {
         if (granted) {
             scope.launch {
                 isLoading = true
-                songs = MusicLibrary(context).loadSongs()
+                songs = MusicLibrary(context).loadSongs(folderStore)
                 isLoading = false
             }
         } else {
@@ -219,6 +243,9 @@ fun FoxMusicApp(controller: PlayerController) {
                                     Icon(Icons.Default.Add, contentDescription = "Nueva playlist")
                                 }
                             } else {
+                                IconButton(onClick = { showFoldersDialog = true }) {
+                                    Icon(Icons.Default.Folder, contentDescription = "Carpetas")
+                                }
                                 IconButton(onClick = { checkAndLoad() }) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Actualizar")
                                 }
@@ -470,6 +497,76 @@ fun FoxMusicApp(controller: PlayerController) {
                 TextButton(onClick = { showUrlDialog = false }) {
                     Text("Cancelar")
                 }
+            }
+        )
+    }
+
+    
+    if (showFoldersDialog) {
+        AlertDialog(
+            onDismissRequest = { showFoldersDialog = false },
+            title = { Text("Carpetas de música", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        if (musicFolders.isEmpty())
+                            "Sin carpetas seleccionadas: se escanea toda la música del dispositivo."
+                        else
+                            "Solo se muestran canciones de estas carpetas:",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    musicFolders.forEach { folder ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.FolderOpen,
+                                null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Text(
+                                folder.name,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 8.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            IconButton(onClick = {
+                                folderStore.removeFolder(folder.uri)
+                                musicFolders = folderStore.getFolders()
+                                scope.launch {
+                                    isLoading = true
+                                    songs = MusicLibrary(context).loadSongs(folderStore)
+                                    isLoading = false
+                                }
+                            }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Quitar")
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = { folderPickerLauncher.launch(null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Añadir carpeta")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFoldersDialog = false }) { Text("Cerrar") }
             }
         )
     }
